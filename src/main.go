@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -126,7 +127,33 @@ func main() {
 		fmt.Fprintln(os.Stderr, "md2html:", err)
 		os.Exit(2)
 	}
-	// placeholder until Task 15
-	fmt.Println("parsed:", opts)
-	_ = embeddedShell
+
+	shellHTML := embeddedShell
+	if opts.shellPath != "" {
+		b, err := os.ReadFile(opts.shellPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "md2html: read shell: %v\n", err)
+			os.Exit(2)
+		}
+		shellHTML = string(b)
+	}
+
+	written, procErr := processFiles(
+		opts.files, opts.outDir, shellHTML,
+		ConvertOptions{LinkRewrite: !opts.noLinkRewrite},
+	)
+
+	if !opts.noOpen && len(written) > 0 {
+		if err := openInBrowser(written[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "md2html: open: %v\n", err)
+		}
+	}
+
+	if procErr != nil {
+		os.Exit(1)
+	}
+}
+
+func openInBrowser(path string) error {
+	return exec.Command("open", path).Run()
 }
