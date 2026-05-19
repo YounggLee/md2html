@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -191,5 +193,30 @@ func TestRenderFullDocument_NoH1UsesFilenameTitle(t *testing.T) {
 	}
 	if !strings.Contains(html, "TITLE=foo;") {
 		t.Errorf("expected filename-derived title 'foo', got:\n%s", html)
+	}
+}
+
+func TestGoldenIntegration(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("testdata", "sample.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "sample.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := "<<<TITLE>>>{{TITLE}}<<</TITLE>>>\n<<<TOC>>>{{TOC}}<<</TOC>>>\n<<<CONTENT>>>{{CONTENT}}<<</CONTENT>>>\n"
+	got, err := RenderDocument(RenderInput{
+		Source:    src,
+		Filename:  "sample.md",
+		ShellHTML: shell,
+		Options:   ConvertOptions{LinkRewrite: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		// helpful diff: show first 200 chars of each
+		t.Errorf("output mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, string(want))
 	}
 }
