@@ -141,3 +141,55 @@ func TestLink_RewriteDisabled(t *testing.T) {
 		t.Errorf("rewrite disabled but .md still rewritten:\n%s", out)
 	}
 }
+
+func TestRenderFullDocument_AllPlaceholdersReplaced(t *testing.T) {
+	src := "# 제목\n## 섹션\n본문 [link](./other.md)"
+	html, err := RenderDocument(RenderInput{
+		Source:    []byte(src),
+		Filename:  "test.md",
+		ShellHTML: "<html>{{TITLE}}|{{TOC}}|{{CONTENT}}</html>",
+		Options:   ConvertOptions{LinkRewrite: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "{{TITLE}}") || strings.Contains(html, "{{TOC}}") || strings.Contains(html, "{{CONTENT}}") {
+		t.Errorf("placeholders not all replaced:\n%s", html)
+	}
+	if !strings.Contains(html, "제목") {
+		t.Errorf("title missing:\n%s", html)
+	}
+	if !strings.Contains(html, "섹션") {
+		t.Errorf("TOC entry missing:\n%s", html)
+	}
+	if !strings.Contains(html, `href="./other.html"`) {
+		t.Errorf("link rewrite missing:\n%s", html)
+	}
+}
+
+func TestRenderFullDocument_LeftoverPlaceholderIsError(t *testing.T) {
+	_, err := RenderDocument(RenderInput{
+		Source:    []byte("# t"),
+		Filename:  "test.md",
+		ShellHTML: "<html>{{TITLE}}|{{TOC}}|{{CONTENT}}|{{UNKNOWN}}</html>",
+		Options:   ConvertOptions{LinkRewrite: true},
+	})
+	if err == nil {
+		t.Fatal("expected error for leftover placeholder")
+	}
+}
+
+func TestRenderFullDocument_NoH1UsesFilenameTitle(t *testing.T) {
+	html, err := RenderDocument(RenderInput{
+		Source:    []byte("no heading"),
+		Filename:  "foo.md",
+		ShellHTML: "<html>TITLE={{TITLE}};{{TOC}};{{CONTENT}}</html>",
+		Options:   ConvertOptions{LinkRewrite: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "TITLE=foo;") {
+		t.Errorf("expected filename-derived title 'foo', got:\n%s", html)
+	}
+}
