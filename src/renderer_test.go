@@ -71,3 +71,28 @@ func TestCodeBlock_MermaidEscape(t *testing.T) {
 		t.Errorf("mermaid content must be HTML-escaped:\n%s", html)
 	}
 }
+
+func TestTaskList_Classes(t *testing.T) {
+	html := renderHTML(t, "- [ ] todo\n- [x] done\n")
+	if !strings.Contains(html, `<ul class="contains-task-list">`) {
+		t.Errorf("missing contains-task-list class on ul:\n%s", html)
+	}
+	occ := strings.Count(html, `<li class="task-list-item">`)
+	if occ != 2 {
+		t.Errorf("expected 2 task-list-item, got %d:\n%s", occ, html)
+	}
+	if !strings.Contains(html, `<input type="checkbox" disabled>`) {
+		t.Errorf("missing disabled checkbox:\n%s", html)
+	}
+	if !strings.Contains(html, `<input type="checkbox" checked disabled>`) &&
+		!strings.Contains(html, `<input type="checkbox" disabled checked>`) {
+		t.Errorf("missing checked checkbox:\n%s", html)
+	}
+}
+
+func TestTaskList_PlainList_NoClass(t *testing.T) {
+	html := renderHTML(t, "- one\n- two\n")
+	if strings.Contains(html, "contains-task-list") || strings.Contains(html, "task-list-item") {
+		t.Errorf("plain list should not have task-list classes:\n%s", html)
+	}
+}

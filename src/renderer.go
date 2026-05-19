@@ -9,6 +9,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
@@ -127,7 +128,81 @@ func readNodeText(n ast.Node, source []byte) string {
 
 type taskListRenderer struct{}
 
-func (r *taskListRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {}
+func (r *taskListRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindList, r.renderList)
+	reg.Register(ast.KindListItem, r.renderListItem)
+	reg.Register(extast.KindTaskCheckBox, r.renderTaskCheckBox)
+}
+
+func (r *taskListRenderer) renderList(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	list := node.(*ast.List)
+	tag := "ul"
+	if list.IsOrdered() {
+		tag = "ol"
+	}
+	if entering {
+		if listContainsTask(list) {
+			fmt.Fprintf(w, `<%s class="contains-task-list">`+"\n", tag)
+		} else {
+			fmt.Fprintf(w, `<%s>`+"\n", tag)
+		}
+	} else {
+		fmt.Fprintf(w, "</%s>\n", tag)
+	}
+	return ast.WalkContinue, nil
+}
+
+func (r *taskListRenderer) renderListItem(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	li := node.(*ast.ListItem)
+	if entering {
+		if listItemIsTask(li) {
+			fmt.Fprint(w, `<li class="task-list-item">`)
+		} else {
+			fmt.Fprint(w, `<li>`)
+		}
+	} else {
+		fmt.Fprint(w, "</li>\n")
+	}
+	return ast.WalkContinue, nil
+}
+
+func (r *taskListRenderer) renderTaskCheckBox(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	cb := node.(*extast.TaskCheckBox)
+	if cb.IsChecked {
+		fmt.Fprint(w, `<input type="checkbox" checked disabled> `)
+	} else {
+		fmt.Fprint(w, `<input type="checkbox" disabled> `)
+	}
+	return ast.WalkContinue, nil
+}
+
+func listItemIsTask(li *ast.ListItem) bool {
+	for child := li.FirstChild(); child != nil; child = child.NextSibling() {
+		if _, ok := child.(*ast.TextBlock); !ok {
+			if _, ok := child.(*ast.Paragraph); !ok {
+				continue
+			}
+		}
+		for inline := child.FirstChild(); inline != nil; inline = inline.NextSibling() {
+			if _, ok := inline.(*extast.TaskCheckBox); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func listContainsTask(list *ast.List) bool {
+	for item := list.FirstChild(); item != nil; item = item.NextSibling() {
+		if li, ok := item.(*ast.ListItem); ok && listItemIsTask(li) {
+			return true
+		}
+	}
+	return false
+}
 
 type linkRenderer struct{ rewrite bool }
 
