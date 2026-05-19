@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -124,6 +125,9 @@ func stripBOM(b []byte) []byte {
 func main() {
 	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
 		fmt.Fprintln(os.Stderr, "md2html:", err)
 		os.Exit(2)
 	}

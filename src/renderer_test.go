@@ -35,6 +35,24 @@ func TestHeading_CollisionSuffix(t *testing.T) {
 	}
 }
 
+func TestHeading_H1H2SameTextCollision(t *testing.T) {
+	// h1 and h2 share text; h1 should win the bare slug, h2 should get -2.
+	html := renderHTML(t, "# 개요\n## 개요")
+	if !strings.Contains(html, `<h1 id="개요">`) {
+		t.Errorf("h1 should get bare slug:\n%s", html)
+	}
+	if !strings.Contains(html, `<h2 id="개요-2">`) {
+		t.Errorf("h2 should get -2 suffix on text collision with h1:\n%s", html)
+	}
+}
+
+func TestHeading_InsideBlockquote(t *testing.T) {
+	html := renderHTML(t, "> ## 개요\n> body")
+	if !strings.Contains(html, `<h2 id="개요">`) {
+		t.Errorf("heading inside blockquote should still get slug id:\n%s", html)
+	}
+}
+
 func TestCodeBlock_MermaidBranch(t *testing.T) {
 	html := renderHTML(t, "```mermaid\nflowchart LR\n  A --> B\n```")
 	if !strings.Contains(html, `<pre class="mermaid">`) {
@@ -65,6 +83,43 @@ func TestCodeBlock_NoLanguage(t *testing.T) {
 	}
 }
 
+func TestCodeBlock_LangSanitizeMixedCase(t *testing.T) {
+	html := renderHTML(t, "```Go\nfmt.Println(\"hi\")\n```")
+	if !strings.Contains(html, `class="language-go"`) {
+		t.Errorf("lang should be lowercased to 'go':\n%s", html)
+	}
+}
+
+func TestCodeBlock_LangSanitizeRejectsBreakout(t *testing.T) {
+	// Hostile fence info. Whatever the fence parser produces as `lang` must be
+	// sanitized to [a-z0-9-] or fall back to plaintext.
+	for _, evil := range []string{
+		"```x\"><script>alert(1)</script><x\nbody\n```",
+		"```语言\nbody\n```", // non-ASCII
+		"```go;evil\nbody\n```",
+	} {
+		html := renderHTML(t, evil)
+		if !strings.Contains(html, `class="language-plaintext"`) {
+			t.Errorf("hostile lang must fall back to plaintext, got:\n%s", html)
+		}
+		if strings.Contains(html, "<script>") || strings.Contains(html, "onerror=") {
+			t.Errorf("hostile lang must not leak attribute breakout:\n%s", html)
+		}
+	}
+}
+
+func TestCodeBlock_LangAfterSpaceIgnored(t *testing.T) {
+	// CommonMark fence info: only the token before the first whitespace is the
+	// language. Metadata after is dropped by goldmark before our renderer sees it.
+	html := renderHTML(t, "```js onerror=alert(1)\nbody\n```")
+	if !strings.Contains(html, `class="language-js"`) {
+		t.Errorf("expected language-js, got:\n%s", html)
+	}
+	if strings.Contains(html, "onerror=") {
+		t.Errorf("metadata after lang must not appear in output:\n%s", html)
+	}
+}
+
 func TestCodeBlock_MermaidEscape(t *testing.T) {
 	html := renderHTML(t, "```mermaid\nA-->>B: Mono<Foo>\n```")
 	// inside <pre class="mermaid">, < and > must be HTML-escaped so the browser
@@ -89,6 +144,27 @@ func TestTaskList_Classes(t *testing.T) {
 	if !strings.Contains(html, `<input type="checkbox" checked disabled>`) &&
 		!strings.Contains(html, `<input type="checkbox" disabled checked>`) {
 		t.Errorf("missing checked checkbox:\n%s", html)
+	}
+}
+
+func TestTaskList_LooseListNoParagraphWrapper(t *testing.T) {
+	// Loose list (blank lines between items) — goldmark turns the inner text
+	// into a Paragraph. Our paragraph renderer must strip <p> for task items.
+	src := "- [ ] one\n\n- [x] two\n"
+	html := renderHTML(t, src)
+	if strings.Contains(html, "<li class=\"task-list-item\"><p>") {
+		t.Errorf("loose task-list-item must not have <p> wrapper:\n%s", html)
+	}
+	if !strings.Contains(html, `<li class="task-list-item"><input type="checkbox" disabled> one`) {
+		t.Errorf("expected unwrapped checkbox+text for first item:\n%s", html)
+	}
+}
+
+func TestTaskList_NonTaskItemKeepsParagraph(t *testing.T) {
+	// In a loose plain list (no checkboxes), paragraphs are preserved.
+	html := renderHTML(t, "- one\n\n- two\n")
+	if !strings.Contains(html, "<p>one</p>") || !strings.Contains(html, "<p>two</p>") {
+		t.Errorf("loose plain list items should keep <p> wrappers:\n%s", html)
 	}
 }
 
@@ -134,6 +210,31 @@ func TestLink_NonMdUnchanged(t *testing.T) {
 	}
 }
 
+func TestAutoLink_EmailGetsMailtoPrefix(t *testing.T) {
+	html := renderHTML(t, "<foo@bar.com>")
+	if !strings.Contains(html, `href="mailto:foo@bar.com"`) {
+		t.Errorf("email autolink missing mailto: prefix:\n%s", html)
+	}
+}
+
+func TestAutoLink_GfmEmailLinkifyGetsMailtoPrefix(t *testing.T) {
+	// GFM Linkify converts bare emails to AutoLink nodes too.
+	html := renderHTML(t, "contact foo@bar.com please")
+	if !strings.Contains(html, `href="mailto:foo@bar.com"`) {
+		t.Errorf("GFM-linkified email missing mailto: prefix:\n%s", html)
+	}
+}
+
+func TestAutoLink_UrlUnchanged(t *testing.T) {
+	html := renderHTML(t, "<https://example.com>")
+	if !strings.Contains(html, `href="https://example.com"`) {
+		t.Errorf("URL autolink missing or rewritten:\n%s", html)
+	}
+	if strings.Contains(html, "mailto:") {
+		t.Errorf("URL autolink must not get mailto: prefix:\n%s", html)
+	}
+}
+
 func TestLink_RewriteDisabled(t *testing.T) {
 	out, _, _, err := convertMarkdown([]byte("[design](./design.md)"), ConvertOptions{LinkRewrite: false})
 	if err != nil {
@@ -141,6 +242,32 @@ func TestLink_RewriteDisabled(t *testing.T) {
 	}
 	if !strings.Contains(out, `href="./design.md"`) {
 		t.Errorf("rewrite disabled but .md still rewritten:\n%s", out)
+	}
+}
+
+func TestLink_FragmentOnlyUnchanged(t *testing.T) {
+	// Fragment-only links have no .md to rewrite.
+	for _, opt := range []ConvertOptions{
+		{LinkRewrite: true},
+		{LinkRewrite: false},
+	} {
+		out, _, _, err := convertMarkdown([]byte("[top](#section)"), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `href="#section"`) {
+			t.Errorf("fragment-only link must be unchanged (rewrite=%v):\n%s", opt.LinkRewrite, out)
+		}
+	}
+}
+
+func TestLink_InTableCellRewritten(t *testing.T) {
+	// GFM table is rendered by the default renderer, but link nodes inside
+	// table cells must still pass through our linkRenderer.
+	src := "| col |\n|---|\n| [d](./design.md) |\n"
+	html := renderHTML(t, src)
+	if !strings.Contains(html, `href="./design.html"`) {
+		t.Errorf("link inside table cell must be rewritten:\n%s", html)
 	}
 }
 
@@ -178,6 +305,49 @@ func TestRenderFullDocument_LeftoverPlaceholderIsError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for leftover placeholder")
+	}
+}
+
+func TestRenderFullDocument_MissingPlaceholderIsError(t *testing.T) {
+	for _, missing := range []string{
+		"<html>{{TOC}}{{CONTENT}}</html>",  // no TITLE
+		"<html>{{TITLE}}{{CONTENT}}</html>", // no TOC
+		"<html>{{TITLE}}{{TOC}}</html>",     // no CONTENT
+		"<html>no placeholders here</html>",
+	} {
+		_, err := RenderDocument(RenderInput{
+			Source:    []byte("# t"),
+			Filename:  "test.md",
+			ShellHTML: missing,
+			Options:   ConvertOptions{LinkRewrite: true},
+		})
+		if err == nil {
+			t.Errorf("expected error for shell missing placeholder, got nil. shell=%q", missing)
+		}
+	}
+}
+
+func TestRenderFullDocument_MultiPlaceholdersAllReplaced(t *testing.T) {
+	// PR #99 shell may have {{TITLE}} in both <title> and og:title meta.
+	// All occurrences should be replaced; a single residual would slip past
+	// leftoverPlaceholderRE.
+	shell := "<title>{{TITLE}}</title>" +
+		`<meta property="og:title" content="{{TITLE}}">` +
+		"<body>{{TOC}}{{CONTENT}}</body>"
+	out, err := RenderDocument(RenderInput{
+		Source:    []byte("# Hello"),
+		Filename:  "test.md",
+		ShellHTML: shell,
+		Options:   ConvertOptions{LinkRewrite: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "{{TITLE}}") {
+		t.Errorf("multiple {{TITLE}} not all replaced:\n%s", out)
+	}
+	if strings.Count(out, "Hello") < 2 {
+		t.Errorf("expected title 'Hello' twice, got:\n%s", out)
 	}
 }
 

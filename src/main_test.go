@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +46,13 @@ func TestParseArgs_NoFiles(t *testing.T) {
 	_, err := parseArgs([]string{})
 	if err == nil {
 		t.Fatal("expected error for no files")
+	}
+}
+
+func TestParseArgs_HelpReturnsErrHelp(t *testing.T) {
+	_, err := parseArgs([]string{"--help"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp for --help, got %v", err)
 	}
 }
 

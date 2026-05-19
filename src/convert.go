@@ -17,6 +17,12 @@ type RenderInput struct {
 // RenderDocument runs the full pipeline: markdown parse → custom render → shell
 // placeholder substitution → leftover placeholder check.
 func RenderDocument(in RenderInput) (string, error) {
+	for _, p := range []string{"{{TITLE}}", "{{TOC}}", "{{CONTENT}}"} {
+		if !strings.Contains(in.ShellHTML, p) {
+			return "", fmt.Errorf("shell missing placeholder: %s", p)
+		}
+	}
+
 	body, title, toc, err := convertMarkdown(in.Source, in.Options)
 	if err != nil {
 		return "", err
@@ -26,9 +32,9 @@ func RenderDocument(in RenderInput) (string, error) {
 	}
 
 	out := in.ShellHTML
-	out = strings.Replace(out, "{{TITLE}}", htmlAttrEscape(title), 1)
-	out = strings.Replace(out, "{{TOC}}", toc, 1)
-	out = strings.Replace(out, "{{CONTENT}}", body, 1)
+	out = strings.ReplaceAll(out, "{{TITLE}}", htmlAttrEscape(title))
+	out = strings.ReplaceAll(out, "{{TOC}}", toc)
+	out = strings.ReplaceAll(out, "{{CONTENT}}", body)
 
 	if loc := leftoverPlaceholderRE.FindString(out); loc != "" {
 		return "", fmt.Errorf("leftover placeholder in shell: %s", loc)

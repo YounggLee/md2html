@@ -43,6 +43,7 @@ func convertMarkdown(src []byte, opts ConvertOptions) (htmlOut, title, tocHTML s
 			util.Prioritized(&headingRenderer{}, 100),
 			util.Prioritized(&codeBlockRenderer{}, 100),
 			util.Prioritized(&taskListRenderer{}, 100),
+			util.Prioritized(&paragraphRenderer{}, 100),
 			util.Prioritized(&linkRenderer{rewrite: opts.LinkRewrite}, 100),
 		),
 	)
@@ -93,18 +94,32 @@ func (r *codeBlockRenderer) renderFenced(w util.BufWriter, source []byte, node a
 		return ast.WalkContinue, nil
 	}
 	cb := node.(*ast.FencedCodeBlock)
-	lang := string(cb.Language(source))
+	lang := strings.ToLower(string(cb.Language(source)))
 	body := readNodeText(cb, source)
 
 	if lang == "mermaid" {
 		fmt.Fprintf(w, `<pre class="mermaid">%s</pre>`+"\n", escapeHTML(body))
 		return ast.WalkSkipChildren, nil
 	}
-	if lang == "" {
-		lang = "plaintext"
-	}
+	lang = sanitizeLang(lang)
 	fmt.Fprintf(w, `<pre><code class="language-%s">%s</code></pre>`+"\n", lang, escapeHTML(body))
 	return ast.WalkSkipChildren, nil
+}
+
+// sanitizeLang restricts the fence info string to [a-z0-9-]. Anything else
+// (empty, non-ASCII, or attempted attribute breakout) becomes "plaintext".
+// Defense in depth: the lang value lands inside a class attribute, so we
+// cannot trust raw user input here.
+func sanitizeLang(s string) string {
+	if s == "" {
+		return "plaintext"
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-') {
+			return "plaintext"
+		}
+	}
+	return s
 }
 
 func (r *codeBlockRenderer) renderIndented(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -178,6 +193,29 @@ func (r *taskListRenderer) renderTaskCheckBox(w util.BufWriter, source []byte, n
 	return ast.WalkContinue, nil
 }
 
+// paragraphRenderer strips the <p> wrapper when the paragraph is the direct
+// child of a task-list-item. goldmark promotes paragraphs in loose lists, so
+// `- [ ] foo` between blank lines would otherwise render as
+// `<li class="task-list-item"><p><input ...> foo</p></li>`, contradicting the
+// design rule "task list items have no <p> wrapper".
+type paragraphRenderer struct{}
+
+func (r *paragraphRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindParagraph, r.render)
+}
+
+func (r *paragraphRenderer) render(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if parent, ok := node.Parent().(*ast.ListItem); ok && listItemIsTask(parent) {
+		return ast.WalkContinue, nil
+	}
+	if entering {
+		fmt.Fprint(w, "<p>")
+	} else {
+		fmt.Fprint(w, "</p>\n")
+	}
+	return ast.WalkContinue, nil
+}
+
 func listItemIsTask(li *ast.ListItem) bool {
 	for child := li.FirstChild(); child != nil; child = child.NextSibling() {
 		if _, ok := child.(*ast.TextBlock); !ok {
@@ -235,6 +273,9 @@ func (r *linkRenderer) renderAutoLink(w util.BufWriter, source []byte, node ast.
 	a := node.(*ast.AutoLink)
 	url := string(a.URL(source))
 	label := string(a.Label(source))
+	if a.AutoLinkType == ast.AutoLinkEmail && !strings.HasPrefix(strings.ToLower(url), "mailto:") {
+		url = "mailto:" + url
+	}
 	fmt.Fprintf(w, `<a href="%s">%s</a>`, htmlAttrEscape(url), escapeHTML(label))
 	return ast.WalkSkipChildren, nil
 }
