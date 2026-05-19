@@ -1,1 +1,3 @@
 *.test
+# Stray local build (canonical build lives in ../bin/md2html)
+/md2html
