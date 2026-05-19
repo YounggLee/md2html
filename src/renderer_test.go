@@ -96,3 +96,48 @@ func TestTaskList_PlainList_NoClass(t *testing.T) {
 		t.Errorf("plain list should not have task-list classes:\n%s", html)
 	}
 }
+
+func TestLink_RelativeMdToHtml(t *testing.T) {
+	html := renderHTML(t, "[design](./design.md)")
+	if !strings.Contains(html, `href="./design.html"`) {
+		t.Errorf("expected .md → .html rewrite:\n%s", html)
+	}
+}
+
+func TestLink_FragmentPreserved(t *testing.T) {
+	html := renderHTML(t, "[overview](../../overview.md#목표)")
+	if !strings.Contains(html, `href="../../overview.html#목표"`) {
+		t.Errorf("expected fragment preserved:\n%s", html)
+	}
+}
+
+func TestLink_AbsoluteUnchanged(t *testing.T) {
+	for _, link := range []string{
+		"[x](https://example.com/a.md)",
+		"[x](http://example.com/a.md)",
+		"[x](mailto:foo@example.com)",
+		"[x](tel:+1234)",
+	} {
+		html := renderHTML(t, link)
+		if strings.Contains(html, ".html") {
+			t.Errorf("absolute/protocol link must not be rewritten: %q →\n%s", link, html)
+		}
+	}
+}
+
+func TestLink_NonMdUnchanged(t *testing.T) {
+	html := renderHTML(t, "[img](./pic.png)")
+	if !strings.Contains(html, `href="./pic.png"`) {
+		t.Errorf("non-md path must be unchanged:\n%s", html)
+	}
+}
+
+func TestLink_RewriteDisabled(t *testing.T) {
+	out, _, _, err := convertMarkdown([]byte("[design](./design.md)"), ConvertOptions{LinkRewrite: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `href="./design.md"`) {
+		t.Errorf("rewrite disabled but .md still rewritten:\n%s", out)
+	}
+}

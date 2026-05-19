@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -206,8 +205,75 @@ func listContainsTask(list *ast.List) bool {
 
 type linkRenderer struct{ rewrite bool }
 
-func (r *linkRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {}
+func (r *linkRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindLink, r.renderLink)
+	reg.Register(ast.KindAutoLink, r.renderAutoLink)
+}
 
-// --- helpers used by later renderers ---
+func (r *linkRenderer) renderLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	l := node.(*ast.Link)
+	if entering {
+		dest := string(l.Destination)
+		if r.rewrite {
+			dest = rewriteMdToHtml(dest)
+		}
+		fmt.Fprintf(w, `<a href="%s"`, htmlAttrEscape(dest))
+		if len(l.Title) > 0 {
+			fmt.Fprintf(w, ` title="%s"`, htmlAttrEscape(string(l.Title)))
+		}
+		fmt.Fprint(w, `>`)
+	} else {
+		fmt.Fprint(w, `</a>`)
+	}
+	return ast.WalkContinue, nil
+}
 
-var _ = url.PathEscape // suppress unused import until link renderer task
+func (r *linkRenderer) renderAutoLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	a := node.(*ast.AutoLink)
+	url := string(a.URL(source))
+	label := string(a.Label(source))
+	fmt.Fprintf(w, `<a href="%s">%s</a>`, htmlAttrEscape(url), escapeHTML(label))
+	return ast.WalkSkipChildren, nil
+}
+
+// rewriteMdToHtml replaces .md with .html in relative links while preserving
+// fragments and query strings. Absolute (http://, https://, //, mailto:, tel:)
+// and non-.md paths are returned unchanged.
+func rewriteMdToHtml(dest string) string {
+	// protocol / scheme guards
+	lower := strings.ToLower(dest)
+	if strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "//") ||
+		strings.HasPrefix(lower, "mailto:") ||
+		strings.HasPrefix(lower, "tel:") {
+		return dest
+	}
+
+	// split path | fragment | query
+	path := dest
+	rest := ""
+	for _, sep := range []string{"#", "?"} {
+		if i := strings.Index(path, sep); i >= 0 {
+			rest = path[i:] + rest
+			path = path[:i]
+		}
+	}
+	if strings.HasSuffix(strings.ToLower(path), ".md") {
+		path = path[:len(path)-3] + ".html"
+	}
+	return path + rest
+}
+
+func htmlAttrEscape(s string) string {
+	r := strings.NewReplacer(
+		`&`, "&amp;",
+		`"`, "&quot;",
+		`<`, "&lt;",
+		`>`, "&gt;",
+	)
+	return r.Replace(s)
+}
