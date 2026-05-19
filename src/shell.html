@@ -465,43 +465,7 @@
         });
       });
 
-      // 10) sticky 섹션 칩 바
-      const h2sForChips = [...article.querySelectorAll('h2[id]')];
-      if (h2sForChips.length >= 2) {
-        const bar = document.createElement('nav');
-        bar.className = 'section-chips';
-        bar.setAttribute('aria-label', '섹션 빠른 이동');
-        h2sForChips.forEach(h => {
-          const chip = document.createElement('a');
-          chip.className = 'section-chip';
-          chip.href = '#' + h.id;
-          const clone = h.cloneNode(true);
-          clone.querySelectorAll('.heading-anchor').forEach(a => a.remove());
-          chip.textContent = clone.textContent.trim();
-          bar.appendChild(chip);
-        });
-        article.prepend(bar);
-
-        const chips = [...bar.querySelectorAll('.section-chip')];
-        const chipByHash = new Map(chips.map(c => {
-          let id = c.getAttribute('href').slice(1);
-          try { id = decodeURIComponent(id); } catch (e) {}
-          return [id, c];
-        }));
-        if ('IntersectionObserver' in window) {
-          const ioChip = new IntersectionObserver(entries => {
-            entries.forEach(e => {
-              const chip = chipByHash.get(e.target.id);
-              if (!chip) return;
-              if (e.isIntersecting) {
-                chips.forEach(c => c.classList.remove('active'));
-                chip.classList.add('active');
-              }
-            });
-          }, { rootMargin: '0px 0px -75% 0px' });
-          h2sForChips.forEach(h => ioChip.observe(h));
-        }
-      }
+      // 10) sticky 섹션 칩 바 — disabled (md2html: 왼쪽 TOC가 동일 역할)
 
       // 11) 긴 코드 블록 접기 (>15줄)
       article.querySelectorAll('pre:not(.mermaid)').forEach(pre => {
