@@ -83,7 +83,47 @@ func (r *headingRenderer) render(w util.BufWriter, source []byte, node ast.Node,
 
 type codeBlockRenderer struct{}
 
-func (r *codeBlockRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {}
+func (r *codeBlockRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindFencedCodeBlock, r.renderFenced)
+	reg.Register(ast.KindCodeBlock, r.renderIndented)
+}
+
+func (r *codeBlockRenderer) renderFenced(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	cb := node.(*ast.FencedCodeBlock)
+	lang := string(cb.Language(source))
+	body := readNodeText(cb, source)
+
+	if lang == "mermaid" {
+		fmt.Fprintf(w, `<pre class="mermaid">%s</pre>`+"\n", escapeHTML(body))
+		return ast.WalkSkipChildren, nil
+	}
+	if lang == "" {
+		lang = "plaintext"
+	}
+	fmt.Fprintf(w, `<pre><code class="language-%s">%s</code></pre>`+"\n", lang, escapeHTML(body))
+	return ast.WalkSkipChildren, nil
+}
+
+func (r *codeBlockRenderer) renderIndented(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	body := readNodeText(node, source)
+	fmt.Fprintf(w, `<pre><code class="language-plaintext">%s</code></pre>`+"\n", escapeHTML(body))
+	return ast.WalkSkipChildren, nil
+}
+
+func readNodeText(n ast.Node, source []byte) string {
+	var b strings.Builder
+	for i := 0; i < n.Lines().Len(); i++ {
+		seg := n.Lines().At(i)
+		b.Write(seg.Value(source))
+	}
+	return b.String()
+}
 
 type taskListRenderer struct{}
 
@@ -95,5 +135,4 @@ func (r *linkRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {}
 
 // --- helpers used by later renderers ---
 
-var _ = url.PathEscape    // suppress unused import until link renderer task
-var _ = strings.NewReader // suppress unused import
+var _ = url.PathEscape // suppress unused import until link renderer task
