@@ -1,0 +1,19 @@
+md2html
+Copyright 2026 The md2html Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+
+---
+
+src/shell.html
+This project bundles an interactive HTML shell originally produced as
+part of AIAPIChannel/aac-core PR #99 (`spec/templates/html-shell.html`).
+The shell is a self-contained markdown rendering harness using
+github-markdown-css, highlight.js, and Mermaid via CDN, with custom
+client-side JavaScript for auto-enhancement (TOC, anchors, search,
+code copy, etc.).
