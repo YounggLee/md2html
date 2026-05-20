@@ -80,7 +80,9 @@ Claude Code 가 자동으로 스킬을 인식한다.
 | `make build` | `src/` 컴파일 → `bin/md2html` |
 | `make test` | `go test ./...` (29개 테스트) |
 | `make install` | build + symlink을 `~/.claude/skills/md2html/`에 |
-| `make uninstall` | symlink 제거 (소스는 그대로) |
+| `make uninstall` | 스킬 symlink 제거 (소스는 그대로) |
+| `make install-cli` | build + `~/.local/bin/md2html` symlink (PATH에 노출). 경로 변경: `PREFIX=...` |
+| `make uninstall-cli` | CLI symlink 제거 |
 | `make clean` | `bin/md2html` 삭제 |
 
 ## 변환 규칙 요약
